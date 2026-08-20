@@ -1,0 +1,27 @@
+{
+  "name": "scrappy-bot",
+  "version": "1.0.0",
+  "description": "Scrappy - Bot de Discord con Auto-Aprendizaje de Chat e Inteligencia Híbrida (Markov + Gemini AI)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "test": "node src/scratch/test_scrappy.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "genia",
+    "markov",
+    "gemini",
+    "ai",
+    "auto-learning"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
