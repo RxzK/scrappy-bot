@@ -1,8 +1,18 @@
 require('dotenv').config();
+const http = require('http');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const chatLearnerStore = require('./utils/chatLearnerStore');
 const genAiEngine = require('./utils/genAiEngine');
 const scrappyCommand = require('./commands/scrappy');
+
+// Servidor HTTP simple para cumplir con el Health Check de Render (evita el "Port scan timeout")
+const PORT = process.env.PORT || 10000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('🤖 Scrappy Bot online 24/7 en Render!');
+}).listen(PORT, () => {
+    console.log(`🌐 Servidor HTTP para Render listo en el puerto ${PORT}`);
+});
 
 const client = new Client({
     intents: [
