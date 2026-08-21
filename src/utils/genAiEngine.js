@@ -175,29 +175,24 @@ async function generateHybridText(guildId, rawPrompt = null, recentContext = [])
         .replace(/@\S+/g, "")
         .trim();
 
-    let markovSeed = generateMarkovText(guildId, cleanPrompt, 15);
-    markovSeed = cleanFirstPerson(markovSeed); // Sanitizar semilla Markov
-
     const systemInstruction = buildCommunitySystemPrompt(guildId);
 
     let contextStr = "";
     if (recentContext.length > 0) {
-        contextStr = "\nÚLTIMOS MENSAJES DEL CHAT:\n" +
-            recentContext.map(m => {
+        contextStr = "\nHISTORIAL RECIENTE DE CHAT:\n" +
+            recentContext.slice(-5).map(m => {
                 const c = (m.content || "").replace(/<@!?&?\d+>/g, "").replace(/@\S+/g, "").trim();
                 return `${m.author}: ${c}`;
             }).join("\n") + "\n";
     }
 
     const userQuery = `${contextStr}
-El usuario te dijo: "${cleanPrompt || 'Hola'}"
+Mensaje actual del usuario: "${cleanPrompt || 'Hola'}"
 
-REQUISITOS OBLIGATORIOS DE RESPUESTA:
-- Responde directamente al usuario en PRIMERA PERSONA ("yo", "mi", "me").
-- PROHIBIDO: NUNCA incluyas menciones de Discord (como @Scrappy, <@id>, @everyone) ni signos @ en tu respuesta.
-- NUNCA te menciones como "scrappy" ni hables en 3ª persona.
-- NUNCA repitas o hagas eco de las palabras exactas del usuario ("${cleanPrompt || ''}").
-- Semilla de modismos aprendidos: "${markovSeed}"`;
+REQUISITO: Escribe una respuesta lógica, coherente, inteligente y graciosa a este mensaje.
+- Habla en primera persona ("yo").
+- Responde con sentido al tema actual sin repetir la frase del usuario.
+- Usa los modismos e informosidad del servidor de forma natural.`;
 
     let finalReply = "";
 
