@@ -14,10 +14,11 @@ const MAX_RECENT_MESSAGES = 25;
 function getDefaultConfig() {
     return {
         enabled: true,
-        autoRespond: false,
-        autoRespondChance: 0.05,
+        autoRespond: true,
+        autoRespondChance: 0.10, // 10% probabilidad de auto-responder
         mode: "hybrid", // "markov" | "hybrid" | "gemini"
         ignoredChannels: [],
+        enabledChannels: [], // Lista de canales activados explícitamente (si está vacía, actúa en todos)
         optedOutUsers: []
     };
 }
@@ -44,6 +45,7 @@ function getGuildLearningData(guildId) {
     // Asegurar estructura
     const cl = rawData.chat_learning;
     cl.config = { ...getDefaultConfig(), ...(cl.config || {}) };
+    cl.config.enabledChannels = cl.config.enabledChannels || [];
     cl.markovChain = cl.markovChain || {};
     cl.keywords = cl.keywords || {};
     cl.userStyles = cl.userStyles || {};
@@ -95,11 +97,18 @@ function ingestMessage(message) {
 
     const guildId = message.guild.id;
     const learningData = getGuildLearningData(guildId);
+    const config = learningData.config;
 
-    if (!learningData.config.enabled) return false;
-    if (learningData.config.ignoredChannels.includes(message.channel.id)) return false;
+    if (!config.enabled) return false;
+
+    // Validar canal activado (si hay canales en enabledChannels, sólo permitir esos)
+    if (config.enabledChannels.length > 0 && !config.enabledChannels.includes(message.channel.id)) {
+        return false;
+    }
+
+    if (config.ignoredChannels.includes(message.channel.id)) return false;
     if (DEFAULT_IGNORED_PATTERNS.some(p => p.test(message.channel.name))) return false;
-    if (learningData.config.optedOutUsers.includes(message.author.id)) return false;
+    if (config.optedOutUsers.includes(message.author.id)) return false;
 
     const cleanContent = cleanAndTokenizeText(message.content);
     if (!cleanContent) return false;
@@ -202,6 +211,29 @@ function toggleUserOptOut(guildId, userId) {
 }
 
 /**
+ * Alterna la activación de Scrappy en un canal específico.
+ * @param {string} guildId 
+ * @param {string} channelId 
+ * @returns {boolean} true si fue activado, false si fue desactivado
+ */
+function toggleChannel(guildId, channelId) {
+    const learningData = getGuildLearningData(guildId);
+    const list = learningData.config.enabledChannels;
+    const index = list.indexOf(channelId);
+
+    let isEnabled = false;
+    if (index > -1) {
+        list.splice(index, 1);
+    } else {
+        list.push(channelId);
+        isEnabled = true;
+    }
+
+    updateConfig(guildId, { enabledChannels: list });
+    return isEnabled;
+}
+
+/**
  * Obtiene estadísticas de aprendizaje.
  */
 function getGuildStats(guildId) {
@@ -224,6 +256,7 @@ function getGuildStats(guildId) {
         totalKeywords,
         totalUsersTracked,
         topKeywords,
+        enabledChannelsCount: data.config.enabledChannels.length,
         optedOutCount: data.config.optedOutUsers.length,
         ignoredChannelsCount: data.config.ignoredChannels.length
     };
@@ -233,7 +266,9 @@ module.exports = {
     getGuildLearningData,
     ingestMessage,
     updateConfig,
+    toggleChannel,
     toggleUserOptOut,
     getGuildStats,
     cleanAndTokenizeText
 };
+

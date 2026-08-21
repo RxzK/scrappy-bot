@@ -235,7 +235,7 @@ async function generateMemeQuote(guildId) {
 }
 
 /**
- * Responde dinámicamente si el bot fue mencionado o por probabilidad autoRespond.
+ * Responde dinámicamente si el bot fue mencionado, nombrado o por probabilidad autoRespond.
  */
 async function handleAutoResponse(message) {
     if (!message || !message.guild || message.author.bot) return null;
@@ -243,12 +243,22 @@ async function handleAutoResponse(message) {
     const learningData = getGuildLearningData(message.guild.id);
     const config = learningData.config;
 
+    // Si hay canales activados explícitamente, sólo responder en esos canales
+    if (config.enabledChannels && config.enabledChannels.length > 0) {
+        if (!config.enabledChannels.includes(message.channel.id)) return null;
+    }
+
+    if (config.ignoredChannels && config.ignoredChannels.includes(message.channel.id)) return null;
+
+    const textLower = (message.content || "").toLowerCase();
     const isMentioned = message.mentions && message.mentions.has(message.client.user);
     const isReplyToBot = message.reference && message.referencedMessage && message.referencedMessage.author.id === message.client.user.id;
+    const isNamed = textLower.includes("scrappy");
 
-    if (!isMentioned && !isReplyToBot) {
+    // Si no fue mencionado, respondido ni nombrado, revisar la probabilidad autoRespond
+    if (!isMentioned && !isReplyToBot && !isNamed) {
         if (!config.autoRespond) return null;
-        if (Math.random() > (config.autoRespondChance || 0.05)) return null;
+        if (Math.random() > (config.autoRespondChance || 0.10)) return null;
     }
 
     const mode = config.mode || "hybrid";

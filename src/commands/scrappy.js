@@ -7,6 +7,10 @@ module.exports = {
         .setName('scrappy')
         .setDescription('Scrappy Bot: Auto-aprendizaje de chat, frases de la comunidad y diálogos.')
         .addSubcommand(sub =>
+            sub.setName('activar')
+                .setDescription('Activa o desactiva a Scrappy en el canal actual para aprender y responder.')
+        )
+        .addSubcommand(sub =>
             sub.setName('hablar')
                 .setDescription('Genera un mensaje al estilo de la comunidad.')
                 .addStringOption(opt => opt.setName('palabra').setDescription('Palabra o tema inicial'))
@@ -53,7 +57,27 @@ module.exports = {
 
         await interaction.deferReply({ ephemeral: subcommand === 'optout' });
 
-        // 1. HABLAR
+        // 0. ACTIVAR EN CANAL
+        if (subcommand === 'activar') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                return interaction.editReply({ content: "❌ Necesitas el permiso de **Gestionar Canales** o **Administrador** para activar/desactivar Scrappy en este canal." });
+            }
+
+            const channelId = interaction.channel.id;
+            const isEnabled = chatLearnerStore.toggleChannel(guildId, channelId);
+
+            const embed = new EmbedBuilder()
+                .setColor(isEnabled ? '#2ECC71' : '#E74C3C')
+                .setTitle(isEnabled ? '🟢 Scrappy Activado en este Canal' : '🔴 Scrappy Desactivado en este Canal')
+                .setDescription(
+                    isEnabled
+                        ? `🧠 **Scrappy ahora leerá, aprenderá y responderá automáticamente en <#${channelId}>.**\n\n- Responderá cuando lo mencionen (<@${interaction.client.user.id}>), nombren *"scrappy"*, le respondan o por azar (10% de probabilidad en el chat).`
+                        : `🛑 **Scrappy ya no leerá ni responderá mensajes en <#${channelId}>.**`
+                )
+                .setFooter({ text: 'Scrappy Bot · Control por Canal' });
+
+            return interaction.editReply({ embeds: [embed] });
+        }
         if (subcommand === 'hablar') {
             const promptWord = interaction.options.getString('palabra');
             const learningData = chatLearnerStore.getGuildLearningData(guildId);
