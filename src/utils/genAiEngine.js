@@ -130,15 +130,21 @@ ${randomSamples || '"hola bro", "xd", "que onda", "pendjkooo"'}
 }
 
 /**
- * Sanitiza cualquier texto para eliminar referencias en 3ª persona a "Scrappy" o "el bot"
- * y forzar la perspectiva en 1ª persona ("yo").
+ * Sanitiza cualquier texto para eliminar menciones (@Scrappy, <@id>, etc.),
+ * referencias en 3ª persona a "Scrappy" o "el bot" y forzar la perspectiva en 1ª persona ("yo").
  */
 function cleanFirstPerson(text) {
     if (!text || typeof text !== "string") return text;
 
     let clean = text;
 
-    // 1. Eliminar o transformar frases comunes en 3ª persona
+    // 1. Eliminar CUALQUIER mención de Discord (<@123456>, @Scrappy, @everyone, @here, @usuario)
+    clean = clean.replace(/<@!?&?\d+>/g, "");
+    clean = clean.replace(/@everyone|@here/gi, "");
+    clean = clean.replace(/@scrappy/gi, "");
+    clean = clean.replace(/@\S+/g, "");
+
+    // 2. Eliminar o transformar frases comunes en 3ª persona
     clean = clean.replace(/\bscrappy\s+le\s+mete\s+presi[oó]n\b/gi, "yo le meto presión");
     clean = clean.replace(/\bscrappy\s+le\s+mete\b/gi, "yo le meto");
     clean = clean.replace(/\bscrappy\s+le\b/gi, "yo le");
@@ -149,10 +155,10 @@ function cleanFirstPerson(text) {
     clean = clean.replace(/\bscrappy\s+sabe\b/gi, "yo sé");
     clean = clean.replace(/\bscrappy\s+hace\b/gi, "yo hago");
 
-    // 2. Si queda "scrappy" como sujeto aislado, cambiarlo por "yo"
+    // 3. Si queda "scrappy" como sujeto aislado, cambiarlo por "yo"
     clean = clean.replace(/\b(el bot|scrappy)\b/gi, "yo");
 
-    // 3. Limpiar dobles espacios producidos por reemplazos
+    // 4. Limpiar dobles espacios producidos por reemplazos
     clean = clean.replace(/\s+/g, " ").trim();
 
     return clean;
@@ -161,8 +167,15 @@ function cleanFirstPerson(text) {
 /**
  * Genera un mensaje usando el modelo Híbrido (Groq IA o Gemini IA + personalidad del servidor).
  */
-async function generateHybridText(guildId, prompt = null, recentContext = []) {
-    let markovSeed = generateMarkovText(guildId, prompt, 15);
+async function generateHybridText(guildId, rawPrompt = null, recentContext = []) {
+    // Limpiar el prompt de entrada quitando menciones
+    let cleanPrompt = (rawPrompt || "")
+        .replace(/<@!?&?\d+>/g, "")
+        .replace(/@scrappy/gi, "")
+        .replace(/@\S+/g, "")
+        .trim();
+
+    let markovSeed = generateMarkovText(guildId, cleanPrompt, 15);
     markovSeed = cleanFirstPerson(markovSeed); // Sanitizar semilla Markov
 
     const systemInstruction = buildCommunitySystemPrompt(guildId);
@@ -170,16 +183,20 @@ async function generateHybridText(guildId, prompt = null, recentContext = []) {
     let contextStr = "";
     if (recentContext.length > 0) {
         contextStr = "\nÚLTIMOS MENSAJES DEL CHAT:\n" +
-            recentContext.map(m => `${m.author}: ${m.content}`).join("\n") + "\n";
+            recentContext.map(m => {
+                const c = (m.content || "").replace(/<@!?&?\d+>/g, "").replace(/@\S+/g, "").trim();
+                return `${m.author}: ${c}`;
+            }).join("\n") + "\n";
     }
 
     const userQuery = `${contextStr}
-El usuario te dijo: "${prompt || 'Hola'}"
+El usuario te dijo: "${cleanPrompt || 'Hola'}"
 
-REQUISITO OBLIGATORIO DE RESPUESTA:
+REQUISITOS OBLIGATORIOS DE RESPUESTA:
 - Responde directamente al usuario en PRIMERA PERSONA ("yo", "mi", "me").
+- PROHIBIDO: NUNCA incluyas menciones de Discord (como @Scrappy, <@id>, @everyone) ni signos @ en tu respuesta.
 - NUNCA te menciones como "scrappy" ni hables en 3ª persona.
-- NUNCA repitas o hagas eco de las palabras exactas del usuario ("${prompt || ''}").
+- NUNCA repitas o hagas eco de las palabras exactas del usuario ("${cleanPrompt || ''}").
 - Semilla de modismos aprendidos: "${markovSeed}"`;
 
     let finalReply = "";
