@@ -33,7 +33,7 @@ function generateMarkovText(guildId, promptWord = null, maxWords = 25) {
     const stateKeys = Object.keys(chain);
 
     if (stateKeys.length === 0) {
-        return "Scrappy todavía está escuchando y aprendiendo del chat... ¡Escriban más!";
+        return "Todavía estoy escuchando y aprendiendo del chat... ¡Escriban más!";
     }
 
     let currentKey = null;
@@ -130,10 +130,41 @@ ${randomSamples || '"hola bro", "xd", "que onda", "pendjkooo"'}
 }
 
 /**
+ * Sanitiza cualquier texto para eliminar referencias en 3ª persona a "Scrappy" o "el bot"
+ * y forzar la perspectiva en 1ª persona ("yo").
+ */
+function cleanFirstPerson(text) {
+    if (!text || typeof text !== "string") return text;
+
+    let clean = text;
+
+    // 1. Eliminar o transformar frases comunes en 3ª persona
+    clean = clean.replace(/\bscrappy\s+le\s+mete\s+presi[oó]n\b/gi, "yo le meto presión");
+    clean = clean.replace(/\bscrappy\s+le\s+mete\b/gi, "yo le meto");
+    clean = clean.replace(/\bscrappy\s+le\b/gi, "yo le");
+    clean = clean.replace(/\bscrappy\s+es\b/gi, "yo soy");
+    clean = clean.replace(/\bscrappy\s+dice\b/gi, "yo digo");
+    clean = clean.replace(/\bscrappy\s+opina\b/gi, "yo opino");
+    clean = clean.replace(/\bscrappy\s+piensa\b/gi, "yo pienso");
+    clean = clean.replace(/\bscrappy\s+sabe\b/gi, "yo sé");
+    clean = clean.replace(/\bscrappy\s+hace\b/gi, "yo hago");
+
+    // 2. Si queda "scrappy" como sujeto aislado, cambiarlo por "yo"
+    clean = clean.replace(/\b(el bot|scrappy)\b/gi, "yo");
+
+    // 3. Limpiar dobles espacios producidos por reemplazos
+    clean = clean.replace(/\s+/g, " ").trim();
+
+    return clean;
+}
+
+/**
  * Genera un mensaje usando el modelo Híbrido (Groq IA o Gemini IA + personalidad del servidor).
  */
 async function generateHybridText(guildId, prompt = null, recentContext = []) {
-    const markovSeed = generateMarkovText(guildId, prompt, 15);
+    let markovSeed = generateMarkovText(guildId, prompt, 15);
+    markovSeed = cleanFirstPerson(markovSeed); // Sanitizar semilla Markov
+
     const systemInstruction = buildCommunitySystemPrompt(guildId);
 
     let contextStr = "";
@@ -145,33 +176,42 @@ async function generateHybridText(guildId, prompt = null, recentContext = []) {
     const userQuery = `${contextStr}
 El usuario te dijo: "${prompt || 'Hola'}"
 
-REQUISITO DE RESPUESTA:
-- Responde directamente al usuario usando tus PROPIAS palabras en PRIMERA PERSONA ("yo", "mi", "me").
-- NO repitas ni hagas eco de las palabras del usuario ("${prompt || ''}").
+REQUISITO OBLIGATORIO DE RESPUESTA:
+- Responde directamente al usuario en PRIMERA PERSONA ("yo", "mi", "me").
+- NUNCA te menciones como "scrappy" ni hables en 3ª persona.
+- NUNCA repitas o hagas eco de las palabras exactas del usuario ("${prompt || ''}").
 - Semilla de modismos aprendidos: "${markovSeed}"`;
+
+    let finalReply = "";
 
     // 1. Probar Groq IA (Pool de 8 Keys ultra rápidas)
     const groqReply = await groqManager.generateText(systemInstruction, userQuery, 250);
-    if (groqReply) return groqReply;
-
-    // 2. Fallback a Gemini AI
-    const genAI = getGenAIInstance();
-    if (genAI) {
-        try {
-            const model = genAI.getGenerativeModel({
-                model: "gemini-1.5-flash",
-                systemInstruction
-            });
-            const result = await model.generateContent(userQuery);
-            const response = await result.response;
-            return response.text().trim();
-        } catch (err) {
-            console.warn("[SCRAPPY-ENGINE] Fallo Gemini AI:", err.message);
+    if (groqReply) {
+        finalReply = groqReply;
+    } else {
+        // 2. Fallback a Gemini AI
+        const genAI = getGenAIInstance();
+        if (genAI) {
+            try {
+                const model = genAI.getGenerativeModel({
+                    model: "gemini-1.5-flash",
+                    systemInstruction
+                });
+                const result = await model.generateContent(userQuery);
+                const response = await result.response;
+                finalReply = response.text().trim();
+            } catch (err) {
+                console.warn("[SCRAPPY-ENGINE] Fallo Gemini AI:", err.message);
+            }
         }
     }
 
-    // 3. Fallback final a Cadenas de Markov
-    return markovSeed;
+    if (!finalReply) {
+        finalReply = markovSeed;
+    }
+
+    // Sanitizar respuesta final
+    return cleanFirstPerson(finalReply);
 }
 
 /**
