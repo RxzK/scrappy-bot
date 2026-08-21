@@ -55,7 +55,8 @@ function getGuildLearningData(guildId) {
 }
 
 /**
- * Limpia y tokeniza texto eliminando comandos, URLs, menciones y spam.
+ * Limpia y tokeniza texto eliminando comandos, URLs y menciones,
+ * PERO PRESERVANDO la ortografía exacta, modismos, deformaciones y risas de la comunidad.
  * @param {string} text 
  * @returns {string|null}
  */
@@ -70,19 +71,20 @@ function cleanAndTokenizeText(text) {
     // 2. URLs
     if (/https?:\/\/\S+/i.test(clean) || /discord\.(gg|com\/invite)\/\S+/i.test(clean)) return null;
 
-    // 3. Menciones y Emojis custom
+    // 3. Menciones y Emojis custom (reemplazar por nada o ignorar)
     clean = clean.replace(/<@!?&?\d+>/g, "");
     clean = clean.replace(/<#\d+>/g, "");
     clean = clean.replace(/<a?:\w+:\d+>/g, "");
 
-    // 4. Repeticiones exageradas de letras
-    clean = clean.replace(/(.)\1{4,}/gi, "$1$1$1");
+    // 4. Preservar modismos y risas (reducir solo repeticiones de más de 4 caracteres para evitar spam extremo)
+    clean = clean.replace(/(.)\1{4,}/gi, "$1$1$1$1");
     clean = clean.trim();
 
     const tokens = clean.split(/\s+/).filter(t => t.length > 0);
     if (tokens.length < 1) return null;
 
-    const validWords = tokens.filter(t => /[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9]/.test(t));
+    // Permitir cualquier palabra que contenga letras, números o símbolos de jerga (ej: xd, pendjkooo, kbrn, 27xk)
+    const validWords = tokens.filter(t => /[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9_]/.test(t));
     if (validWords.length === 0) return null;
 
     return clean;
@@ -102,13 +104,13 @@ function ingestMessage(message) {
     if (!config.enabled) return false;
 
     // Validar canal activado (si hay canales en enabledChannels, sólo permitir esos)
-    if (config.enabledChannels.length > 0 && !config.enabledChannels.includes(message.channel.id)) {
+    if (config.enabledChannels && config.enabledChannels.length > 0 && !config.enabledChannels.includes(message.channel.id)) {
         return false;
     }
 
-    if (config.ignoredChannels.includes(message.channel.id)) return false;
+    if (config.ignoredChannels && config.ignoredChannels.includes(message.channel.id)) return false;
     if (DEFAULT_IGNORED_PATTERNS.some(p => p.test(message.channel.name))) return false;
-    if (config.optedOutUsers.includes(message.author.id)) return false;
+    if (config.optedOutUsers && config.optedOutUsers.includes(message.author.id)) return false;
 
     const cleanContent = cleanAndTokenizeText(message.content);
     if (!cleanContent) return false;
@@ -116,25 +118,26 @@ function ingestMessage(message) {
     const words = cleanContent.split(/\s+/);
     if (words.length === 0) return false;
 
-    // 1. Matriz de Markov (2-gram)
+    // 1. Matriz de Markov (preservando EXACTAMENTE la ortografía y mayúsculas/minúsculas originales)
     const chain = learningData.markovChain;
 
-    const startKey = `__START__ ${words[0].toLowerCase()}`;
+    const startKey = `__START__ ${words[0]}`;
     if (!chain[startKey]) chain[startKey] = [];
-    if (words[1]) chain[startKey].push(words[1].toLowerCase());
+    if (words[1]) chain[startKey].push(words[1]);
 
     for (let i = 0; i < words.length; i++) {
-        const w1 = words[i].toLowerCase();
-        const w2 = words[i + 1] ? words[i + 1].toLowerCase() : "__END__";
+        const w1 = words[i];
+        const w2 = words[i + 1] ? words[i + 1] : "__END__";
 
         if (i < words.length - 1) {
             const key = `${w1} ${w2}`;
-            const w3 = words[i + 2] ? words[i + 2].toLowerCase() : "__END__";
+            const w3 = words[i + 2] ? words[i + 2] : "__END__";
             if (!chain[key]) chain[key] = [];
             chain[key].push(w3);
         }
 
-        if (w1.length > 2) {
+        // Registrar frecuencia de palabras exactas (incluyendo deformaciones como pendjkooo, xddd, etc)
+        if (w1.length >= 2) {
             learningData.keywords[w1] = (learningData.keywords[w1] || 0) + 1;
         }
     }
