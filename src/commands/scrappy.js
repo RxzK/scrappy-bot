@@ -55,12 +55,17 @@ module.exports = {
         const guildId = interaction.guild.id;
         const subcommand = interaction.options.getSubcommand();
 
-        await interaction.deferReply({ ephemeral: subcommand === 'optout' });
+        await interaction.deferReply({ ephemeral: subcommand === 'optout' }).catch(() => null);
 
         // 0. ACTIVAR EN CANAL
         if (subcommand === 'activar') {
-            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                return interaction.editReply({ content: "❌ Necesitas el permiso de **Gestionar Canales** o **Administrador** para activar/desactivar Scrappy en este canal." });
+            const hasPerms = interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) ||
+                interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
+                interaction.member?.permissions?.has?.(PermissionFlagsBits.ManageChannels) ||
+                interaction.member?.permissions?.has?.(PermissionFlagsBits.Administrator);
+
+            if (!hasPerms) {
+                return interaction.editReply({ content: "❌ Necesitas el permiso de **Gestionar Canales** o **Administrador** para activar/desactivar Scrappy en este canal." }).catch(() => null);
             }
 
             const channelId = interaction.channel.id;
